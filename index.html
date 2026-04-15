@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AudioCompress - Compress Audio in Browser</title>
+    <meta
+      name="description"
+      content="Audio compressor SPA in browser with real-time controls, visualizer, and export."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Sora:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="bg-orb bg-orb-1"></div>
+    <div class="bg-orb bg-orb-2"></div>
+
+    <header class="topbar glass">
+      <div class="brand-wrap">
+        <div class="brand-icon" aria-hidden="true">~</div>
+        <div>
+          <h1 class="brand-title">AudioCompress</h1>
+          <p class="brand-tagline">Compress Audio in Browser</p>
+        </div>
+      </div>
+      <div class="engine-badge">Web Audio Engine</div>
+    </header>
+
+    <main class="layout">
+      <aside class="panel glass panel-left">
+        <h2 class="panel-title">Upload</h2>
+        <label class="upload-zone" for="audioInput" id="dropZone">
+          <input
+            id="audioInput"
+            type="file"
+            accept="audio/mpeg,audio/wav,audio/ogg,audio/mp4,.mp3,.wav,.ogg,.m4a"
+          />
+          <span class="upload-icon">+</span>
+          <strong>Drop Audio Here</strong>
+          <small>MP3, WAV, OGG, M4A</small>
+        </label>
+
+        <div class="file-list-wrap">
+          <h3>Uploaded Files</h3>
+          <ul id="fileList" class="file-list">
+            <li class="file-empty">No file loaded yet</li>
+          </ul>
+        </div>
+
+        <div class="actions">
+          <button id="applyBtn" class="btn btn-primary" disabled>
+            Apply Compression
+          </button>
+          <button id="downloadBtn" class="btn btn-secondary" disabled>
+            Download
+          </button>
+        </div>
+      </aside>
+
+      <section class="panel glass panel-center">
+        <div class="visualizers">
+          <div class="viz-card">
+            <div class="viz-head">
+              <h3>Input Spectrum</h3>
+              <span class="pill">Original</span>
+            </div>
+            <canvas id="inputCanvas" width="1000" height="240"></canvas>
+          </div>
+          <div class="viz-card">
+            <div class="viz-head">
+              <h3>Output Spectrum</h3>
+              <span class="pill pill-alt">Compressed</span>
+            </div>
+            <canvas id="outputCanvas" width="1000" height="240"></canvas>
+          </div>
+        </div>
+
+        <div class="player-row">
+          <audio
+            id="audioPlayer"
+            preload="metadata"
+            crossorigin="anonymous"
+          ></audio>
+
+          <div class="transport">
+            <button id="playBtn" class="circle-btn" aria-label="Play or pause">
+              Play
+            </button>
+            <button id="bypassBtn" class="toggle-btn" aria-pressed="false">
+              Bypass Off
+            </button>
+          </div>
+
+          <div class="timeline">
+            <span id="currentTime">00:00</span>
+            <input
+              id="seekBar"
+              type="range"
+              min="0"
+              max="100"
+              value="0"
+              step="0.1"
+            />
+            <span id="duration">00:00</span>
+          </div>
+
+          <div class="volume-wrap">
+            <label for="volumeSlider">Volume</label>
+            <input
+              id="volumeSlider"
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value="0.9"
+            />
+          </div>
+
+          <div class="meter-card">
+            <p>Gain Reduction</p>
+            <div class="meter-track">
+              <div id="grMeter" class="meter-fill"></div>
+            </div>
+            <strong id="grValue">0.0 dB</strong>
+          </div>
+        </div>
+      </section>
+
+      <aside class="panel glass panel-right">
+        <div class="presets-wrap">
+          <h2 class="panel-title">Presets</h2>
+          <div class="preset-grid" id="presetGrid">
+            <button class="preset-btn" data-preset="vocal">Vocal</button>
+            <button class="preset-btn" data-preset="music">Music</button>
+            <button class="preset-btn" data-preset="loudness">Loudness</button>
+            <button class="preset-btn" data-preset="podcast">Podcast</button>
+            <button class="preset-btn" data-preset="aggressive">
+              Aggressive
+            </button>
+          </div>
+        </div>
+
+        <div class="controls-wrap" id="controlsWrap">
+          <h2 class="panel-title">Compressor Settings</h2>
+
+          <div class="control-group">
+            <label for="threshold"
+              >Threshold <span id="thresholdVal">-24 dB</span></label
+            >
+            <input
+              id="threshold"
+              type="range"
+              min="-100"
+              max="0"
+              step="1"
+              value="-24"
+            />
+          </div>
+
+          <div class="control-group">
+            <label for="ratio">Ratio <span id="ratioVal">4.0</span></label>
+            <input
+              id="ratio"
+              type="range"
+              min="1"
+              max="20"
+              step="0.1"
+              value="4"
+            />
+          </div>
+
+          <div class="control-group">
+            <label for="attack"
+              >Attack <span id="attackVal">0.003 s</span></label
+            >
+            <input
+              id="attack"
+              type="range"
+              min="0"
+              max="1"
+              step="0.001"
+              value="0.003"
+            />
+          </div>
+
+          <div class="control-group">
+            <label for="release"
+              >Release <span id="releaseVal">0.25 s</span></label
+            >
+            <input
+              id="release"
+              type="range"
+              min="0"
+              max="5"
+              step="0.01"
+              value="0.25"
+            />
+          </div>
+
+          <div class="control-group">
+            <label for="knee">Knee <span id="kneeVal">30 dB</span></label>
+            <input
+              id="knee"
+              type="range"
+              min="0"
+              max="40"
+              step="1"
+              value="30"
+            />
+          </div>
+
+          <div class="control-group">
+            <label for="makeup"
+              >Makeup Gain <span id="makeupVal">0 dB</span></label
+            >
+            <input
+              id="makeup"
+              type="range"
+              min="0"
+              max="20"
+              step="0.1"
+              value="0"
+            />
+          </div>
+        </div>
+      </aside>
+    </main>
+
+    <footer class="footer glass">
+      <p>
+        Audio compression reduces dynamic range so quiet and loud parts become
+        more consistent. Learn more at
+        <a
+          href="https://developer.mozilla.org/en-US/docs/Web/API/DynamicsCompressorNode"
+          target="_blank"
+          rel="noreferrer"
+          >DynamicsCompressorNode Docs</a
+        >.
+      </p>
+    </footer>
+
+    <script src="app.js" defer></script>
+  </body>
+</html>
