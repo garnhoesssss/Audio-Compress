@@ -74,9 +74,12 @@
           <div class="viz-card">
             <div class="viz-head">
               <h3>Output Spectrum</h3>
-              <span class="pill pill-alt">Compressed</span>
+              <span id="outputBadge" class="pill pill-alt">Ready</span>
             </div>
             <canvas id="outputCanvas" width="1000" height="240"></canvas>
+            <p id="compressionStats" class="compression-stats">
+              Compression Ratio: -- | Factor: -- | Hemat: --
+            </p>
           </div>
         </div>
 
@@ -244,6 +247,7 @@
       </p>
     </footer>
 
+    <script src="shannonFano.js" defer></script>
     <script src="app.js" defer></script>
   </body>
 </html>

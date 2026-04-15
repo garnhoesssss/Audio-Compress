@@ -68,7 +68,7 @@ http://localhost:5500
 - Bypass toggle (A/B monitoring)
 - Visualizer input dan output (spectrum analyzer)
 - Gain reduction meter live (nilai reduction dalam dB)
-- Export hasil kompresi ke WAV
+- Export hasil kompresi ke format terkompresi browser-native (WebM/Opus atau OGG/Opus bila didukung, fallback ke WAV)
 
 ## Penjelasan Proses Sistem
 
@@ -244,12 +244,13 @@ sequenceDiagram
 2. Saat bypass OFF, wet gain dinaikkan dan dry gain diturunkan.
 3. Perbandingan karakter audio bisa dilakukan tanpa memuat ulang file.
 
-### Apply Compression dan Export WAV
+### Apply Compression dan Export File
 
 1. AudioBuffer aktif diproses di OfflineAudioContext.
 2. Graph offline memakai parameter terbaru yang ada di panel kontrol.
-3. Output render dikonversi menjadi PCM 16-bit WAV.
-4. Blob URL hasil kompresi disiapkan untuk tombol download.
+3. Output render dikodekan ulang memakai MediaRecorder ke format terkompresi bila tersedia.
+4. Jika codec terkompresi tidak didukung browser, sistem fallback ke WAV.
+5. Blob URL hasil kompresi disiapkan untuk tombol download.
 
 ## Penjelasan Parameter Compressor
 
@@ -277,6 +278,7 @@ sequenceDiagram
 
 ## Limitasi Saat Ini
 
-- Output download saat ini dalam format WAV (ukuran file relatif besar).
+- Output download utama sekarang mengikuti codec terkompresi browser-native, sehingga ukuran file lebih kecil.
+- Jika browser tidak mendukung codec audio terkompresi, sistem fallback ke WAV.
 - Belum ada trimming/region processing (seluruh durasi audio diproses).
 - Belum ada auto loudness target (misalnya -14 LUFS).

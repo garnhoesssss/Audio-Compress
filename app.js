@@ -11,6 +11,10 @@ const state = {
   mediaRecorderDest: null,
   audioBlobUrl: "",
   compressedBlobUrl: "",
+  compressedMimeType: "",
+  sourceArrayBuffer: null,
+  sourceMimeType: "",
+  sourceFileName: "",
   currentFile: null,
   currentBuffer: null,
   bypass: false,
@@ -81,6 +85,14 @@ const el = {
   grMeter: document.getElementById("grMeter"),
   grValue: document.getElementById("grValue"),
   presetGrid: document.getElementById("presetGrid"),
+  compressionStats: document.getElementById("compressionStats"),
+  outputBadge: document.getElementById("outputBadge"),
+};
+
+const exportConfig = {
+  targetSampleRate: 24000,
+  targetChannels: 1,
+  audioBitsPerSecond: 64000,
 };
 
 function clamp(value, min, max) {
@@ -112,6 +124,41 @@ function updateValueLabels() {
   document.getElementById("releaseVal").textContent = `${release.toFixed(2)} s`;
   document.getElementById("kneeVal").textContent = `${knee} dB`;
   document.getElementById("makeupVal").textContent = `${makeup.toFixed(1)} dB`;
+}
+
+function inferMimeTypeFromName(fileName) {
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith(".mp3")) return "audio/mpeg";
+  if (lower.endsWith(".wav")) return "audio/wav";
+  if (lower.endsWith(".ogg")) return "audio/ogg";
+  if (lower.endsWith(".m4a")) return "audio/mp4";
+  return "application/octet-stream";
+}
+
+function pickBestAudioMimeType() {
+  if (typeof MediaRecorder === "undefined") return "";
+
+  const candidates = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/ogg;codecs=opus",
+    "audio/ogg",
+  ];
+
+  return (
+    candidates.find((mimeType) => MediaRecorder.isTypeSupported(mimeType)) || ""
+  );
+}
+
+function getDownloadExtension(mimeType) {
+  if (mimeType.includes("ogg")) return "ogg";
+  if (mimeType.includes("webm")) return "webm";
+  if (mimeType.includes("mp4") || mimeType.includes("aac")) return "m4a";
+  return "bin";
+}
+
+function blobToObjectUrlWithCleanup(blob) {
+  return URL.createObjectURL(blob);
 }
 
 async function ensureAudioGraph() {
@@ -275,11 +322,10 @@ function renderFileList() {
   });
 }
 
-async function decodeToBuffer(file) {
-  const arr = await file.arrayBuffer();
+async function decodeToBuffer(arrayBuffer) {
   const tempContext = new (window.AudioContext || window.webkitAudioContext)();
   try {
-    return await tempContext.decodeAudioData(arr.slice(0));
+    return await tempContext.decodeAudioData(arrayBuffer.slice(0));
   } finally {
     tempContext.close();
   }
@@ -308,7 +354,12 @@ async function loadFile(file) {
   }
 
   state.currentFile = file;
+  state.sourceFileName = file.name;
+  state.sourceMimeType = file.type || inferMimeTypeFromName(file.name);
   renderFileList();
+
+  const arrayBuffer = await file.arrayBuffer();
+  state.sourceArrayBuffer = arrayBuffer;
 
   if (state.audioBlobUrl) {
     URL.revokeObjectURL(state.audioBlobUrl);
@@ -317,13 +368,14 @@ async function loadFile(file) {
   state.audioBlobUrl = URL.createObjectURL(file);
   el.audioPlayer.src = state.audioBlobUrl;
 
-  state.currentBuffer = await decodeToBuffer(file);
+  state.currentBuffer = await decodeToBuffer(arrayBuffer);
   el.applyBtn.disabled = false;
   el.downloadBtn.disabled = true;
 
   if (state.compressedBlobUrl) {
     URL.revokeObjectURL(state.compressedBlobUrl);
     state.compressedBlobUrl = "";
+    state.compressedMimeType = "";
   }
 
   await ensureAudioGraph();
@@ -448,27 +500,53 @@ function bindEvents() {
   });
 
   el.applyBtn.addEventListener("click", async () => {
-    if (!state.currentBuffer) return;
+    if (!state.sourceArrayBuffer) return;
     el.applyBtn.disabled = true;
-    el.applyBtn.textContent = "Processing...";
+    el.applyBtn.textContent = "Compressing...";
 
     try {
-      const blob = await renderCompressedBlob(state.currentBuffer, {
-        threshold: Number(document.getElementById("threshold").value),
-        ratio: Number(document.getElementById("ratio").value),
-        attack: Number(document.getElementById("attack").value),
-        release: Number(document.getElementById("release").value),
-        knee: Number(document.getElementById("knee").value),
-        makeup: Number(document.getElementById("makeup").value),
+      const compressedBuffer = await compressShannonFano(
+        state.sourceArrayBuffer,
+        {
+          mimeType: state.sourceMimeType,
+          fileName: state.sourceFileName,
+        },
+      );
+
+      const decompressed = await decompressShannonFano(compressedBuffer);
+      const previewBlob = new Blob([decompressed.arrayBuffer], {
+        type: decompressed.metadata.mimeType || state.sourceMimeType,
+      });
+      const compressedBlob = new Blob([compressedBuffer], {
+        type: "application/octet-stream",
       });
 
       if (state.compressedBlobUrl) {
         URL.revokeObjectURL(state.compressedBlobUrl);
       }
 
-      state.compressedBlobUrl = URL.createObjectURL(blob);
+      state.compressedBlobUrl = blobToObjectUrlWithCleanup(compressedBlob);
+      state.compressedMimeType = "application/octet-stream";
+
+      if (state.audioBlobUrl) {
+        URL.revokeObjectURL(state.audioBlobUrl);
+      }
+      state.audioBlobUrl = URL.createObjectURL(previewBlob);
+      el.audioPlayer.src = state.audioBlobUrl;
+
+      const inputSize = state.sourceArrayBuffer.byteLength;
+      const outputSize = compressedBuffer.byteLength;
+      const compressionRatio = (outputSize / inputSize) * 100;
+      const compressionFactor = inputSize / outputSize;
+      const hemat = 100 - compressionRatio;
+      const statsText = `Compression Ratio: ${compressionRatio.toFixed(2)}% | Factor: ${compressionFactor.toFixed(2)} | Hemat: ${hemat.toFixed(2)}%`;
+
+      el.compressionStats.textContent = statsText;
+      el.outputBadge.textContent = "Compressed";
+      console.log(statsText);
+      alert(statsText);
+
       el.downloadBtn.disabled = false;
-      alert("Compression applied. Click Download to save WAV output.");
     } catch (err) {
       console.error(err);
       alert("Failed to apply compression.");
@@ -484,7 +562,7 @@ function bindEvents() {
     const link = document.createElement("a");
     const baseName = state.currentFile.name.replace(/\.[^.]+$/, "");
     link.href = state.compressedBlobUrl;
-    link.download = `${baseName}-compressed.wav`;
+    link.download = `${baseName}-compressed.sf`;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -495,83 +573,6 @@ function bindEvents() {
     if (state.compressedBlobUrl) URL.revokeObjectURL(state.compressedBlobUrl);
     cancelAnimationFrame(state.rafId);
   });
-}
-
-async function renderCompressedBlob(buffer, params) {
-  const offline = new OfflineAudioContext(
-    buffer.numberOfChannels,
-    buffer.length,
-    buffer.sampleRate,
-  );
-
-  const src = offline.createBufferSource();
-  src.buffer = buffer;
-
-  const compressor = offline.createDynamicsCompressor();
-  compressor.threshold.value = params.threshold;
-  compressor.ratio.value = params.ratio;
-  compressor.attack.value = params.attack;
-  compressor.release.value = params.release;
-  compressor.knee.value = params.knee;
-
-  const makeup = offline.createGain();
-  makeup.gain.value = Math.pow(10, params.makeup / 20);
-
-  src.connect(compressor);
-  compressor.connect(makeup);
-  makeup.connect(offline.destination);
-
-  src.start(0);
-  const rendered = await offline.startRendering();
-  return audioBufferToWavBlob(rendered);
-}
-
-function audioBufferToWavBlob(buffer) {
-  const numChannels = buffer.numberOfChannels;
-  const sampleRate = buffer.sampleRate;
-  const length = buffer.length;
-  const bytesPerSample = 2;
-  const blockAlign = numChannels * bytesPerSample;
-  const dataSize = length * blockAlign;
-  const arrayBuffer = new ArrayBuffer(44 + dataSize);
-  const view = new DataView(arrayBuffer);
-
-  function writeString(offset, str) {
-    for (let i = 0; i < str.length; i += 1) {
-      view.setUint8(offset + i, str.charCodeAt(i));
-    }
-  }
-
-  writeString(0, "RIFF");
-  view.setUint32(4, 36 + dataSize, true);
-  writeString(8, "WAVE");
-  writeString(12, "fmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, numChannels, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * blockAlign, true);
-  view.setUint16(32, blockAlign, true);
-  view.setUint16(34, 16, true);
-  writeString(36, "data");
-  view.setUint32(40, dataSize, true);
-
-  const channels = [];
-  for (let ch = 0; ch < numChannels; ch += 1) {
-    channels.push(buffer.getChannelData(ch));
-  }
-
-  let offset = 44;
-  for (let i = 0; i < length; i += 1) {
-    for (let ch = 0; ch < numChannels; ch += 1) {
-      const sample = clamp(channels[ch][i], -1, 1);
-      const intSample = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
-      view.setInt16(offset, intSample, true);
-      offset += 2;
-    }
-  }
-
-  return new Blob([view], { type: "audio/wav" });
 }
 
 updateValueLabels();
