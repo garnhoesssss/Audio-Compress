@@ -42,6 +42,15 @@ TugasPaandi/
 6. Aktif/nonaktifkan Bypass untuk membandingkan sinyal original vs compressed.
 7. Klik Apply Compression untuk render hasil proses.
 8. Klik Download untuk menyimpan file output WAV.
+9. Rekomendasi local server (opsional) agar loading file lebih stabil:
+
+```bash
+# opsi Python
+python -m http.server 5500
+
+# lalu buka
+http://localhost:5500
+```
 
 ## Fitur Utama
 
@@ -81,6 +90,18 @@ Perubahan slider langsung meng-update properti compressor node:
 - makeup gain dihitung ke skala linear: gain = 10^(dB/20)
 
 Hasilnya, pengguna bisa mendengar perubahan karakter kompresi secara langsung saat audio diputar.
+
+### 2.1 Formula Penting
+
+- Konversi makeup gain dari dB ke linear:
+
+  gain = 10^(dB/20)
+
+- Persentase meter gain reduction (visual):
+
+  meterPercent = clamp(abs(reductionDb) / 24 \* 100, 0, 100)
+
+Catatan: reductionDb bernilai negatif dari node compressor (mis. -6.2 dB), sehingga dipakai nilai absolut untuk tinggi meter.
 
 ### 3. Monitoring dan Visualisasi
 
@@ -149,3 +170,113 @@ flowchart TD
 - Waveform editor (zoom, marker, loop region)
 - Batch compression beberapa file sekaligus
 - Loudness meter LUFS + auto target level
+
+## Flowchart Alur Sinyal Audio (Teknis)
+
+```mermaid
+flowchart LR
+    S[Audio Source
+    HTMLAudioElement] --> IA[Input Analyser]
+    S --> C[DynamicsCompressorNode]
+    C --> MG[Makeup GainNode]
+    MG --> W[Wet GainNode]
+    S --> D[Dry GainNode]
+    W --> M[Master GainNode]
+    D --> M
+    M --> OA[Output Analyser]
+    M --> O[Speaker Output]
+
+    B{Bypass?} -->|ON| D
+    B -->|OFF| C
+```
+
+## Sequence Alur Interaksi User-Sistem
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant UI as UI
+    participant WA as Web Audio Engine
+    participant OFF as Offline Renderer
+
+    U->>UI: Upload file audio
+    UI->>UI: Validasi format (mp3/wav/ogg/m4a)
+    UI->>WA: Decode dan init audio graph
+    U->>UI: Play
+    UI->>WA: Start playback + analyser update
+    U->>UI: Ubah slider / preset
+    UI->>WA: Update threshold/ratio/attack/release/knee/makeup
+    U->>UI: Toggle bypass
+    UI->>WA: Switch wet/dry routing
+    U->>UI: Apply Compression
+    UI->>OFF: Render offline dengan parameter aktif
+    OFF-->>UI: AudioBuffer hasil render
+    UI->>UI: Encode WAV Blob
+    U->>UI: Download
+```
+
+## Detail Alur Kerja Per Fitur
+
+### Upload dan Validasi
+
+1. File dipilih dari input atau drag-and-drop.
+2. Sistem cek MIME type atau ekstensi file.
+3. Jika invalid, sistem menampilkan pesan error dan proses dihentikan.
+4. Jika valid, file masuk daftar upload dan menjadi file aktif.
+
+### Playback dan Monitoring
+
+1. URL object dibuat dari file aktif lalu dipasang ke elemen audio.
+2. Saat playback dimulai, AudioContext dipastikan aktif (resume jika suspended).
+3. Seek bar sinkron terhadap durasi dan currentTime audio.
+4. Volume slider mengatur master gain secara real-time.
+
+### Real-time Compressor Control
+
+1. Setiap slider memicu event input.
+2. Label nilai parameter diperbarui di UI.
+3. Nilai parameter diterapkan ke compressor node.
+4. Visualizer dan gain reduction meter terus diperbarui per frame animasi.
+
+### Bypass A/B Compare
+
+1. Saat bypass ON, dry gain dinaikkan dan wet gain diturunkan.
+2. Saat bypass OFF, wet gain dinaikkan dan dry gain diturunkan.
+3. Perbandingan karakter audio bisa dilakukan tanpa memuat ulang file.
+
+### Apply Compression dan Export WAV
+
+1. AudioBuffer aktif diproses di OfflineAudioContext.
+2. Graph offline memakai parameter terbaru yang ada di panel kontrol.
+3. Output render dikonversi menjadi PCM 16-bit WAV.
+4. Blob URL hasil kompresi disiapkan untuk tombol download.
+
+## Penjelasan Parameter Compressor
+
+- Threshold:
+  Menentukan titik mulai kompresi. Semakin rendah nilainya, semakin banyak bagian sinyal yang ikut dikompresi.
+- Ratio:
+  Menentukan seberapa kuat level di atas threshold ditekan. Contoh 4:1 berarti setiap 4 dB di atas threshold menjadi 1 dB di output.
+- Attack:
+  Kecepatan compressor bereaksi saat sinyal melewati threshold.
+- Release:
+  Kecepatan compressor kembali normal saat sinyal turun di bawah threshold.
+- Knee:
+  Menentukan transisi kompresi. Nilai besar menghasilkan transisi lebih halus (soft).
+- Makeup Gain:
+  Menambah level output setelah kompresi agar loudness terasa kembali naik.
+
+## Mapping Komponen ke File
+
+- index.html
+  Mendefinisikan struktur UI: upload area, file list, visualizer canvas, player controls, panel parameter, tombol apply/download.
+- styles.css
+  Mengatur tema visual dark neon, glass panel, responsivitas desktop-mobile, dan komponen interaktif.
+- app.js
+  Menangani seluruh logic utama: audio graph, slider/preset, bypass, visualizer, offline render, dan konversi WAV.
+
+## Limitasi Saat Ini
+
+- Output download saat ini dalam format WAV (ukuran file relatif besar).
+- Belum ada trimming/region processing (seluruh durasi audio diproses).
+- Belum ada auto loudness target (misalnya -14 LUFS).
