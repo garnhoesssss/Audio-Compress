@@ -18,24 +18,28 @@ public class LzoCompressionService {
             return new byte[0];
         }
 
+        // Follow journal principle: normalize input through hexadecimal representation first.
+        String hexStream = toHex(input);
+        byte[] normalizedInput = fromHex(hexStream);
+
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         Map<Integer, Integer> dictionary = new HashMap<>();
 
         int literalStart = 0;
         int i = 0;
 
-        while (i < input.length) {
-            if (i + MIN_MATCH <= input.length) {
-                int key = threeByteKey(input, i);
+        while (i < normalizedInput.length) {
+            if (i + MIN_MATCH <= normalizedInput.length) {
+                int key = threeByteKey(normalizedInput, i);
                 Integer previousPos = dictionary.get(key);
                 dictionary.put(key, i);
 
                 if (previousPos != null) {
                     int offset = i - previousPos;
                     if (offset > 0 && offset <= MAX_OFFSET) {
-                        int matchLength = countMatch(input, previousPos, i);
+                        int matchLength = countMatch(normalizedInput, previousPos, i);
                         if (matchLength >= MIN_MATCH) {
-                            writeLiterals(input, literalStart, i - literalStart, output);
+                            writeLiterals(normalizedInput, literalStart, i - literalStart, output);
                             writeMatch(offset, matchLength, output);
                             i += matchLength;
                             literalStart = i;
@@ -47,8 +51,28 @@ public class LzoCompressionService {
             i++;
         }
 
-        writeLiterals(input, literalStart, input.length - literalStart, output);
+        writeLiterals(normalizedInput, literalStart, normalizedInput.length - literalStart, output);
         return output.toByteArray();
+    }
+
+    private String toHex(byte[] input) {
+        StringBuilder sb = new StringBuilder(input.length * 2);
+        for (byte b : input) {
+            sb.append(Character.forDigit((b >> 4) & 0xF, 16));
+            sb.append(Character.forDigit(b & 0xF, 16));
+        }
+        return sb.toString();
+    }
+
+    private byte[] fromHex(String hex) {
+        int len = hex.length();
+        byte[] out = new byte[len / 2];
+        for (int i = 0; i < len; i += 2) {
+            int high = Character.digit(hex.charAt(i), 16);
+            int low = Character.digit(hex.charAt(i + 1), 16);
+            out[i / 2] = (byte) ((high << 4) + low);
+        }
+        return out;
     }
 
     private int threeByteKey(byte[] input, int index) {

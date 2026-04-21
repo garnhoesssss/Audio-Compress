@@ -1,0 +1,6 @@
+com\example\tugaspaandi\service\LzoCompressionService.class
+com\example\tugaspaandi\service\CompressionStore.class
+com\example\tugaspaandi\controller\CompressionController.class
+com\example\tugaspaandi\model\CompressionResponse.class
+com\example\tugaspaandi\model\StoredCompression.class
+com\example\tugaspaandi\TugasPaandiApplication.class
